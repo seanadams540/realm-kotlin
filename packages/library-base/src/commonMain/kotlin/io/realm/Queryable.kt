@@ -27,4 +27,5 @@ package io.realm
  */
 interface Queryable<T : RealmObject> {
     fun query(query: String = "TRUEPREDICATE", vararg args: Any?): RealmResults<T>
+    fun filter(query: String = "TRUEPREDICATE", vararg args: Any?): RealmQuery<T>
 }

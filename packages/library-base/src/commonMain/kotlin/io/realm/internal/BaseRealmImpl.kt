@@ -18,6 +18,7 @@ package io.realm.internal
 import io.realm.BaseRealm
 import io.realm.Callback
 import io.realm.Cancellable
+import io.realm.Realm
 import io.realm.RealmObject
 import io.realm.RealmResults
 import io.realm.internal.interop.NativePointer
@@ -66,15 +67,14 @@ abstract class BaseRealmImpl internal constructor(
         // Use same reference through out all operations to avoid locking
         val realmReference = this.realmReference
         realmReference.checkClosed()
-        return RealmResultsImpl.fromQuery(
+
+        // Provide a results pointer fetcher to lazy load the results only when needed
+        return RealmResultsImpl(
             realmReference,
-            RealmInterop.realm_query_parse(
-                realmReference.dbPointer,
-                clazz.simpleName!!,
-                "TRUEPREDICATE"
-            ),
             clazz,
-            configuration.mediator
+            configuration.mediator,
+            ResultsType.FromFirstQuery,
+            "TRUEPREDICATE"
         )
     }
 

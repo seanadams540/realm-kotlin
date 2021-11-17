@@ -688,6 +688,30 @@ actual object RealmInterop {
         }
     }
 
+    actual fun realm_query_parse_for_results(
+        results: NativePointer,
+        query: String,
+        vararg args: Any?
+    ): NativePointer {
+        memScoped {
+            val count = args.size
+            val cArgs = allocArray<realm_value_t>(count)
+            args.mapIndexed { i, arg ->
+                cArgs[i].apply {
+                    set(memScope, arg)
+                }
+            }
+            return CPointerWrapper(
+                realm_wrapper.realm_query_parse_for_results(
+                    results.cptr(),
+                    query,
+                    count.toULong(),
+                    cArgs
+                )
+            )
+        }
+    }
+
     actual fun realm_query_find_first(realm: NativePointer): Link? {
         memScoped {
             val found = alloc<BooleanVar>()
@@ -711,6 +735,14 @@ actual object RealmInterop {
 
     actual fun realm_query_find_all(query: NativePointer): NativePointer {
         return CPointerWrapper(realm_wrapper.realm_query_find_all(query.cptr()))
+    }
+
+    actual fun realm_query_count(query: NativePointer): Long {
+        memScoped {
+            val count = alloc<ULongVar>()
+            checkedBooleanResult(realm_wrapper.realm_query_count(query.cptr(), count.ptr))
+            return count.value.toLong()
+        }
     }
 
     actual fun realm_results_resolve_in(

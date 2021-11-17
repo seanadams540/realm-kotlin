@@ -30,6 +30,9 @@ interface RealmResults<T : RealmObject> : List<T>, Queryable<T>, Versioned {
     @Suppress("SpreadOperator")
     override fun query(query: String, vararg args: Any?): RealmResults<T>
 
+    // TODO : query
+    override fun filter(query: String, vararg args: Any?): RealmQuery<T>
+
     /**
      * Observe changes to the RealmResult. If there is any change to objects represented by the query
      * backing the RealmResult, the flow will emit the updated RealmResult. The flow will continue
