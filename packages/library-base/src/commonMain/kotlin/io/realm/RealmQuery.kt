@@ -23,12 +23,23 @@ import io.realm.internal.RealmResultsImpl
 import io.realm.internal.ResultsType
 import io.realm.internal.interop.NativePointer
 import io.realm.internal.interop.RealmInterop
+import kotlinx.coroutines.flow.Flow
 import kotlin.reflect.KClass
+import kotlin.reflect.KMutableProperty
+import kotlin.reflect.KMutableProperty1
+import kotlin.reflect.KProperty1
 
 /**
  * TODO - query
  */
-interface RealmQuery<T : RealmObject> {
+interface Filterable<T : RealmObject> {
+    fun filter(query: String = "TRUEPREDICATE", vararg args: Any?): RealmQuery<T>
+}
+
+/**
+ * TODO - query
+ */
+interface RealmQuery<T : RealmObject> : Filterable<T> {
 
     val nativePointer: Lazy<NativePointer>
 
@@ -42,7 +53,7 @@ interface RealmQuery<T : RealmObject> {
         TODO("Not yet implemented")
     }
 
-    fun max(): Number {
+    fun <S> max(property: KProperty1<T, S>): Number {
         TODO("Not yet implemented")
     }
 
@@ -50,7 +61,15 @@ interface RealmQuery<T : RealmObject> {
         TODO("Not yet implemented")
     }
 
-    fun average(): Number {
+//    fun <S> average(property: KProperty1<T, S>): Number {
+//        TODO("Not yet implemented")
+//    }
+
+    fun <S> average(property: KProperty1<T, S>): RealmQuery<T> {
+        TODO("Not yet implemented")
+    }
+
+    fun observe(): Flow<RealmResults<T>> {
         TODO("Not yet implemented")
     }
 }
@@ -62,17 +81,22 @@ internal class RealmQueryImpl<T : RealmObject> constructor(
     private val realm: RealmReference,
     private val clazz: KClass<T>,
     private val schema: Mediator,
-    private val results: Lazy<NativePointer>,
+    private val resultsPointer: Lazy<NativePointer>,
     private val query: String,
     private vararg val args: Any?
 ) : RealmQuery<T> {
 
     @Suppress("SpreadOperator")
     override val nativePointer: Lazy<NativePointer> =
-        lazy { RealmInterop.realm_query_parse_for_results(results.value, query, *args) }
+        lazy { RealmInterop.realm_query_parse_for_results(resultsPointer.value, query, *args) }
 
     override fun execute(): RealmResults<T> {
-        val resultsType = ResultsType.FromSubQuery(results.value)
+        val resultsType = ResultsType.FromSubQuery(resultsPointer.value)
         return RealmResultsImpl(realm, clazz, schema, resultsType, query, *args)
+    }
+
+    override fun filter(query: String, vararg args: Any?): RealmQuery<T> {
+        RealmQueryImpl(realm, clazz, schema, resultsPointer, query, args)
+        TODO("Not yet implemented")
     }
 }

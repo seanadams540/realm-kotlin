@@ -23,6 +23,12 @@ import io.realm.RealmQuery
 import io.realm.RealmResults
 import io.realm.entities.Sample
 import io.realm.test.platform.PlatformUtils
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -103,8 +109,56 @@ class QueryTests {
 
         realm.objects(Sample::class)
             .filter("stringField == $0", "Realm")
-//            .filter("intField == $0", 666)
+            .filter("intField == $0", 666)
             .execute()
             .let { assertEquals(1, it.size) }
+
+
+        fun returnAvgValue(): Number {
+            return realm.objects(Sample::class)
+                .filter("intField > $0", 42)
+                .average(Sample::intField)
+        }
+
+        fun flowable(): Flow<Int> {
+            return realm.objects(Sample::class)
+                .filter("intField > $0", 42)
+//                .max(Sample::intField)
+                .observe()
+                .map { it: RealmResults<Sample> ->
+//                    it.max()
+                    2
+                }
+        }
+
+        realm.writeBlocking {
+            this.objects(Sample::class)
+                .filter()
+                .average(Sample::intField)
+                .executeScalar()
+        }
+
+        runBlocking {
+            flowable().collect { maxValue: Int ->
+
+            }
+        }
+
+        fun returnObjectWithMaxValueAsFlow(): Flow<RealmResults<Sample>> {
+            val q: RealmQuery<Sample> = realm.objects(Sample::class)
+                .filter("intField.@max")
+            val min: Number = q.min()
+
+            //
+            val minValue: Number = realm.objects(Sample::class)
+                .filter("intField.@max")
+                .min()
+
+            val avg: Number = realm.objects(Sample::class)
+                .filter()
+                .average(Sample::intField)
+        }
+
+
     }
 }

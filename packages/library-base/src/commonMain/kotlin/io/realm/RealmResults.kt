@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.Flow
  * @see Realm.objects
  * @see MutableRealm.objects
  */
-interface RealmResults<T : RealmObject> : List<T>, Queryable<T>, Versioned {
+interface RealmResults<T : RealmObject> : List<T>, Queryable<T>, Filterable<T>, Versioned {
 
     /**
      * Perform a query on the objects of this result using the Realm Query Language.
