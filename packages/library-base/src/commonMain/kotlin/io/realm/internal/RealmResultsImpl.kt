@@ -39,8 +39,8 @@ import kotlin.reflect.KClass
  */
 sealed class ResultsType {
     object FromFirstQuery : ResultsType()
-    object FromSubQuery : ResultsType()
-    class FromNotification(val resultsPointer: NativePointer) : ResultsType()
+    class FromSubQuery(val resultsPointer: NativePointer) : ResultsType()
+    class FromExistingResults(val resultsPointer: NativePointer) : ResultsType()
 }
 
 /**
@@ -53,18 +53,18 @@ internal class RealmResultsImpl<T : RealmObject> constructor(
     private val realm: RealmReference,
     private val clazz: KClass<T>,
     private val schema: Mediator,
-    private val resultsType: ResultsType,
+    resultsType: ResultsType,
     private val query: String,
     private vararg val args: Any?
 ) : AbstractList<T>(), RealmResults<T>, RealmStateHolder, Observable<RealmResults<T>> {
 
-    private val resultsPointer: NativePointer by lazy { fetchResults(resultsType) }
+    private val resultsPointer: Lazy<NativePointer> = lazy { fetchResults(resultsType) }
 
     override val size: Int
-        get() = RealmInterop.realm_results_count(resultsPointer).toInt()
+        get() = RealmInterop.realm_results_count(resultsPointer.value).toInt()
 
     override fun get(index: Int): T {
-        val link: Link = RealmInterop.realm_results_get<T>(resultsPointer, index.toLong())
+        val link: Link = RealmInterop.realm_results_get<T>(resultsPointer.value, index.toLong())
         val model: RealmObjectInternal = schema.createInstanceOf(clazz)
             .also { it.link(realm, schema, clazz, link) }
         @Suppress("UNCHECKED_CAST")
@@ -72,11 +72,12 @@ internal class RealmResultsImpl<T : RealmObject> constructor(
     }
 
     override fun query(query: String, vararg args: Any?): RealmResultsImpl<T> {
-        return RealmResultsImpl(realm, clazz, schema, ResultsType.FromSubQuery, query, args)
+        val resultsType = ResultsType.FromSubQuery(resultsPointer.value)
+        return RealmResultsImpl(realm, clazz, schema, resultsType, query, args)
     }
 
     override fun filter(query: String, vararg args: Any?): RealmQuery<T> =
-        RealmQueryImpl(resultsPointer, query, *args)
+        RealmQueryImpl(realm, clazz, schema, resultsPointer, query, *args)
 
     override fun observe(): Flow<RealmResults<T>> {
         realm.checkClosed()
@@ -87,32 +88,24 @@ internal class RealmResultsImpl<T : RealmObject> constructor(
         // TODO OPTIMIZE Are there more efficient ways to do this? realm_query_delete_all is not
         //  available in C-API yet, but should probably await final query design
         //  https://github.com/realm/realm-kotlin/issues/84
-        RealmInterop.realm_results_delete_all(resultsPointer)
+        RealmInterop.realm_results_delete_all(resultsPointer.value)
     }
 
     /**
      * Returns a frozen copy of this query result. If it is already frozen, the same instance
      * is returned.
      */
-    override fun freeze(frozenRealm: RealmReference): RealmResultsImpl<T> {
-        val frozenDbPointer = frozenRealm.dbPointer
-        val frozenResults = RealmInterop.realm_results_resolve_in(resultsPointer, frozenDbPointer)
-        val resultsType = ResultsType.FromNotification(frozenResults)
-        return RealmResultsImpl(frozenRealm, clazz, schema, resultsType, query, args)
-    }
+    override fun freeze(frozenRealm: RealmReference): RealmResultsImpl<T> =
+        getResultsForNotification(frozenRealm)
 
     /**
      * Thaw the frozen query result, turning it back into a live, thread-confined RealmResults.
      */
-    override fun thaw(liveRealm: RealmReference): RealmResultsImpl<T> {
-        val liveDbPointer = liveRealm.dbPointer
-        val liveResult = RealmInterop.realm_results_resolve_in(resultsPointer, liveDbPointer)
-        val resultsType = ResultsType.FromNotification(liveResult)
-        return RealmResultsImpl(liveRealm, clazz, schema, resultsType, query, args)
-    }
+    override fun thaw(liveRealm: RealmReference): RealmResultsImpl<T> =
+        getResultsForNotification(liveRealm)
 
     override fun registerForNotification(callback: Callback): NativePointer =
-        RealmInterop.realm_results_add_notification_callback(resultsPointer, callback)
+        RealmInterop.realm_results_add_notification_callback(resultsPointer.value, callback)
 
     override fun emitFrozenUpdate(
         frozenRealm: RealmReference,
@@ -129,22 +122,21 @@ internal class RealmResultsImpl<T : RealmObject> constructor(
     @Suppress("SpreadOperator")
     private fun fetchResults(resultsType: ResultsType): NativePointer {
         // Set results directly when freezing/thawing results inside notifier
-        if (resultsType is ResultsType.FromNotification) {
+        if (resultsType is ResultsType.FromExistingResults) {
             return resultsType.resultsPointer
         }
 
         return when (resultsType) {
             // Parse original query when creating first results
-            ResultsType.FromFirstQuery -> RealmInterop.realm_query_parse(
+            is ResultsType.FromFirstQuery -> RealmInterop.realm_query_parse(
                 realm.dbPointer,
                 clazz.simpleName!!,
                 query,
                 *args
             )
             // Link query to existing results when making subqueries
-            ResultsType.FromSubQuery -> RealmInterop.realm_query_parse_for_results(
-                realm.dbPointer,
-                clazz.simpleName!!,
+            is ResultsType.FromSubQuery -> RealmInterop.realm_query_parse_for_results(
+                resultsType.resultsPointer,
                 query,
                 *args
             )
@@ -152,5 +144,11 @@ internal class RealmResultsImpl<T : RealmObject> constructor(
         }.let { query ->
             RealmInterop.realm_query_find_all(query)
         }
+    }
+
+    private fun getResultsForNotification(realm: RealmReference): RealmResultsImpl<T> {
+        val results = RealmInterop.realm_results_resolve_in(resultsPointer.value, realm.dbPointer)
+        val resultsType = ResultsType.FromExistingResults(results)
+        return RealmResultsImpl(realm, clazz, schema, resultsType, query, args)
     }
 }

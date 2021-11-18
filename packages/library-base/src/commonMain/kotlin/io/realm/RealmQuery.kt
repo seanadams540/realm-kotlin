@@ -17,16 +17,26 @@
 
 package io.realm
 
+import io.realm.internal.Mediator
+import io.realm.internal.RealmReference
+import io.realm.internal.RealmResultsImpl
+import io.realm.internal.ResultsType
 import io.realm.internal.interop.NativePointer
 import io.realm.internal.interop.RealmInterop
+import kotlin.reflect.KClass
 
 /**
  * TODO - query
  */
 interface RealmQuery<T : RealmObject> {
-    val nativePointer: NativePointer
 
-    fun count(): Number
+    val nativePointer: Lazy<NativePointer>
+
+    fun execute(): RealmResults<T>
+
+    fun count(): Number {
+        return RealmInterop.realm_query_count(nativePointer.value)
+    }
 
     fun min(): Number {
         TODO("Not yet implemented")
@@ -49,14 +59,20 @@ interface RealmQuery<T : RealmObject> {
  * TODO - query
  */
 internal class RealmQueryImpl<T : RealmObject> constructor(
-    results: NativePointer,
-    query: String,
-    vararg args: Any?
+    private val realm: RealmReference,
+    private val clazz: KClass<T>,
+    private val schema: Mediator,
+    private val results: Lazy<NativePointer>,
+    private val query: String,
+    private vararg val args: Any?
 ) : RealmQuery<T> {
 
     @Suppress("SpreadOperator")
-    override val nativePointer: NativePointer =
-        RealmInterop.realm_query_parse_for_results(results, query, *args)
+    override val nativePointer: Lazy<NativePointer> =
+        lazy { RealmInterop.realm_query_parse_for_results(results.value, query, *args) }
 
-    override fun count(): Number = RealmInterop.realm_query_count(nativePointer)
+    override fun execute(): RealmResults<T> {
+        val resultsType = ResultsType.FromSubQuery(results.value)
+        return RealmResultsImpl(realm, clazz, schema, resultsType, query, *args)
+    }
 }

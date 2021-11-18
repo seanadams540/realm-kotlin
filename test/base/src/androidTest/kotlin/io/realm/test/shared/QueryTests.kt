@@ -27,6 +27,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class QueryTests {
 
@@ -57,10 +58,29 @@ class QueryTests {
         val count: Number = query.count()
         assertEquals(0L, count)
 
-        realm.writeBlocking { copyToRealm(Sample()) }
+        realm.writeBlocking {
+            copyToRealm(Sample())
+            copyToRealm(Sample().apply {
+                stringField = "ASDF"
+                intField = 666
+            })
+        }
 
+        // Query without filtering
+        realm.objects(Sample::class)
+            .filter()
+            .count()
+            .let { assertEquals(2L, it) }
+
+        // Query by stringField value
         realm.objects(Sample::class)
             .filter("stringField == $0", "Realm")
+            .count()
+            .let { assertEquals(1L, it) }
+
+        // Query by stringField value again
+        realm.objects(Sample::class)
+            .filter("stringField == $0", "ASDF")
             .count()
             .let { assertEquals(1L, it) }
 
@@ -69,5 +89,22 @@ class QueryTests {
             .filter("stringField == $0", "Wrong!")
             .count()
             .let { assertEquals(0L, it) }
+
+        // Lazy evaluation at the very end
+        realm.objects(Sample::class)
+            .filter()
+            .execute()
+            .let { assertEquals(2, it.size) }
+
+        realm.objects(Sample::class)
+            .filter("stringField == $0", "Wrong!")
+            .execute()
+            .let { assertTrue(it.isEmpty()) }
+
+        realm.objects(Sample::class)
+            .filter("stringField == $0", "Realm")
+//            .filter("intField == $0", 666)
+            .execute()
+            .let { assertEquals(1, it.size) }
     }
 }
